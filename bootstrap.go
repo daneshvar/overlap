@@ -2,8 +2,8 @@ package main
 
 import (
 	"daneshvar/overlap/db"
+	"daneshvar/overlap/log"
 	"encoding/json"
-	"log"
 	"os"
 )
 
@@ -13,7 +13,7 @@ type config struct {
 }
 
 var cfg = config{
-	Addr: ":80",
+	Addr: ":8080",
 	DB:   "data.bin",
 }
 
@@ -23,7 +23,7 @@ func bootstrap() {
 
 func loadConfig(filename string) {
 	if fileExists(filename) {
-		log.Printf("Load Config: %s\n", filename)
+		log.Info("Load Config:", filename)
 		f, err := os.Open(filename)
 		if err != nil {
 			log.Fatal(err)
@@ -35,10 +35,10 @@ func loadConfig(filename string) {
 			log.Fatal(err)
 		}
 	} else {
-		log.Printf("Load Config: Default Config\n")
+		log.Info("Load Config: Default Config")
 	}
 
 	if err := db.Init(cfg.DB); err != nil {
-		log.Fatalln(err)
+		log.Fatal(err)
 	}
 }

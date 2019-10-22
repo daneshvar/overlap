@@ -1,9 +1,10 @@
 package main
 
 import (
+	"daneshvar/overlap/api"
 	"daneshvar/overlap/db"
+	"daneshvar/overlap/log"
 	"daneshvar/overlap/route"
-	"log"
 	"os"
 	"os/signal"
 	"time"
@@ -14,11 +15,12 @@ import (
 func main() {
 	bootstrap()
 
-	route.Post("/", add)
-	route.Get("/", get)
-	route.Get("/unique", getUnique)
+	route.Post("/", api.Add)
+	route.Get("/", api.GetAll)
+	route.Get("/unique", api.GetUnique)
 
 	run(cfg.Addr)
+	db.Close()
 }
 
 func requestHandler(ctx *fasthttp.RequestCtx) {
@@ -30,8 +32,6 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 }
 
 func run(addr string) {
-	defer db.Close()
-
 	http := fasthttp.Server{
 		Handler:                       requestHandler,
 		Name:                          "overlap",
@@ -42,13 +42,13 @@ func run(addr string) {
 
 	quit := make(chan os.Signal)
 	signal.Notify(quit, os.Interrupt)
-	log.Println("HTTP: Running in ", addr)
+	log.Info("HTTP: Running in ", addr)
 	go func() {
 		if err := http.ListenAndServe(addr); err != nil {
 			if err.Error() == "HTTP: Server closed" {
-				log.Println("Server closed")
+				log.Info("Server closed")
 			} else {
-				log.Fatalln(err)
+				log.Fatal(err)
 			}
 		}
 	}()
@@ -56,6 +56,6 @@ func run(addr string) {
 	// Wait for interrupt signal to gracefully shutdown the server with
 	// a timeout of 5 seconds.
 	<-quit
-	log.Println("HTTP in Shutting down ...")
-	<-time.After(2 * time.Second)
+	log.Info("HTTP in Shutting down ...")
+	<-time.After(5 * time.Second)
 }

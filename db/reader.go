@@ -3,9 +3,7 @@ package db
 import (
 	"bytes"
 	"daneshvar/overlap/rect"
-	"encoding/binary"
 	"io"
-	"os"
 	"time"
 )
 
@@ -19,86 +17,75 @@ type Record struct {
 
 const RecordSize = 16
 
-func ReadAll() ([]Record, error) {
-	lock.RLock()
-	defer lock.RUnlock()
+// Walk of all records
+func Walk(fn func(*rect.Rect, int64)) error {
+	lock.Lock()
+	defer lock.Unlock()
 
 	var size int64
 
-	if ofs, err := file.Seek(0, os.SEEK_END); err != nil {
-		return nil, err
+	if ofs, err := file.Seek(0, io.SeekEnd); err != nil {
+		return err
 	} else {
 		size = ofs
 	}
 
-	if _, err := file.Seek(0, os.SEEK_SET); err != nil {
-		return nil, err
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return err
 	}
 
 	buf := make([]byte, size)
 	if _, err := file.Read(buf); err != nil && err != io.EOF {
-		return nil, err
+		return err
 	}
 
-	io := bytes.NewBuffer(buf)
-	rec := make([]Record, 0)
-	for i := size; i > 0; i -= RecordSize {
-		var rc rect.Rect
-		var t int64
-		binary.Read(io, binary.BigEndian, &rc.X)      // 2
-		binary.Read(io, binary.BigEndian, &rc.Y)      // 2
-		binary.Read(io, binary.BigEndian, &rc.Width)  // 2
-		binary.Read(io, binary.BigEndian, &rc.Height) // 2
-		binary.Read(io, binary.BigEndian, &t)         // 8
+	r := bytes.NewBuffer(buf)
+	var rc rect.Rect
+	var t int64
 
+	for i := size; i > 0; i -= RecordSize {
+		if err := read(r, &rc, &t); err != nil {
+			return err
+		}
+
+		fn(&rc, t)
+	}
+
+	return nil
+}
+
+// ReadAll returns All records
+func ReadAll() ([]Record, error) {
+	rec := make([]Record, 0)
+	err := Walk(func(rc *rect.Rect, t int64) {
 		rec = append(rec, Record{
 			X: rc.X, Y: rc.Y, Width: rc.Width, Height: rc.Height,
-			Time: time.Unix(t, 0),
+			Time: time.Unix(0, t),
 		})
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
 	return rec, nil
 }
 
+// ReadUnique returns map[Rect]Time of all Rect but time value for duplicates Rect is zero
 func ReadUnique() (map[rect.Rect]int64, error) {
-	lock.RLock()
-	defer lock.RUnlock()
-
-	var size int64
-
-	if ofs, err := file.Seek(0, os.SEEK_END); err != nil {
-		return nil, err
-	} else {
-		size = ofs
-	}
-
-	if _, err := file.Seek(0, os.SEEK_SET); err != nil {
-		return nil, err
-	}
-
-	buf := make([]byte, size)
-	if _, err := file.Read(buf); err != nil && err != io.EOF {
-		return nil, err
-	}
-
-	io := bytes.NewBuffer(buf)
 	rec := make(map[rect.Rect]int64, 0)
-	for i := size; i > 0; i -= RecordSize {
-		var rc rect.Rect
-		var t int64
-		binary.Read(io, binary.BigEndian, &rc.X)      // 2
-		binary.Read(io, binary.BigEndian, &rc.Y)      // 2
-		binary.Read(io, binary.BigEndian, &rc.Width)  // 2
-		binary.Read(io, binary.BigEndian, &rc.Height) // 2
-		binary.Read(io, binary.BigEndian, &t)         // 8
-
-		if v, ok := rec[rc]; ok {
+	err := Walk(func(rc *rect.Rect, t int64) {
+		if v, ok := rec[*rc]; ok {
 			if v > 0 {
-				rec[rc] = 0
+				rec[*rc] = 0
 			}
 		} else {
-			rec[rc] = t
+			rec[*rc] = t
 		}
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
 	return rec, nil
